@@ -15,13 +15,17 @@ pub fn render_tree(root: &TreeNode, cfg: &Config) {
     }
 
     let raw = cfg.raw;
+    let root_metas = collect_metas(root, cfg);
 
-    let root_label = format_label(root, cfg);
     if raw {
-        let _ = writeln!(writer, "{}", root_label);
+        let _ = write!(writer, "{}", root.name);
+    } else if root.is_dir {
+        let _ = write!(writer, "\x1b[1;34m{}\x1b[0m", root.name);
     } else {
-        let _ = writeln!(writer, "\x1b[1;34m{}\x1b[0m", root_label);
+        let _ = write!(writer, "\x1b[0m{}\x1b[0m", root.name);
     }
+    write_metadata(&root_metas, raw, &mut writer);
+    let _ = writeln!(writer);
 
     render_children(&root.children, "", cfg, &mut writer);
 
@@ -37,6 +41,67 @@ pub fn render_tree(root: &TreeNode, cfg: &Config) {
         let _ = writeln!(writer, "\n\x1b[90m{}\x1b[0m", summary);
     }
     let _ = writer.flush();
+}
+
+fn collect_metas(node: &TreeNode, cfg: &Config) -> Vec<(String, &'static str)> {
+    let mut metas: Vec<(String, &'static str)> = Vec::new();
+
+    if !node.is_dir && cfg.show_bytes {
+        let color = if node.size > 10 * 1024 * 1024 {
+            "\x1b[1;31m"
+        } else if node.size > 100 * 1024 {
+            "\x1b[33m"
+        } else {
+            "\x1b[90m"
+        };
+        metas.push((format_size(node.size, DECIMAL), color));
+    }
+
+    if node.is_dir && cfg.show_disk {
+        metas.push((format_size(node.total_size, DECIMAL), "\x1b[1;33m"));
+    }
+
+    if let Some(loc) = node.line_count {
+        metas.push((format!("{} lines", loc), "\x1b[35m"));
+    }
+
+    if let Some(ref date_str) = node.modified_ago {
+        metas.push((date_str.clone(), "\x1b[32m"));
+    }
+
+    if node.is_dir && cfg.show_count {
+        metas.push((
+            format!("[{}f, {}d]", node.file_count, node.dir_count),
+            "\x1b[90m",
+        ));
+    }
+
+    metas
+}
+
+fn write_metadata<W: Write>(metas: &[(String, &'static str)], raw: bool, writer: &mut W) {
+    if metas.is_empty() {
+        return;
+    }
+    if raw {
+        let _ = write!(writer, " (");
+        for (i, (text, _)) in metas.iter().enumerate() {
+            if i > 0 {
+                let _ = write!(writer, ", ");
+            }
+            let _ = write!(writer, "{}", text);
+        }
+        let _ = write!(writer, ")");
+    } else {
+        let _ = write!(writer, " \x1b[90m(");
+        for (i, (text, color)) in metas.iter().enumerate() {
+            if i > 0 {
+                let _ = write!(writer, ", ");
+            }
+            let _ = write!(writer, "{}{}\x1b[0m", color, text);
+        }
+        let _ = write!(writer, "\x1b[90m)\x1b[0m");
+    }
 }
 
 fn render_children<W: Write>(children: &[TreeNode], prefix: &str, cfg: &Config, writer: &mut W) {
@@ -104,67 +169,8 @@ fn format_node_to<W: Write>(
         let _ = write!(writer, "\x1b[0m{}\x1b[0m", node.name);
     }
 
-    let mut metas: Vec<(String, &'static str)> = Vec::new();
-
-    if !node.is_dir && cfg.show_bytes {
-        let color = if node.size > 10 * 1024 * 1024 {
-            "\x1b[1;31m"
-        } else if node.size > 100 * 1024 {
-            "\x1b[33m"
-        } else {
-            "\x1b[90m"
-        };
-        metas.push((format_size(node.size, DECIMAL), color));
-    }
-
-    if node.is_dir && cfg.show_disk {
-        metas.push((format_size(node.total_size, DECIMAL), "\x1b[1;33m"));
-    }
-
-    if let Some(loc) = node.line_count {
-        metas.push((format!("{} lines", loc), "\x1b[35m"));
-    }
-
-    if let Some(ref date_str) = node.modified_ago {
-        metas.push((date_str.clone(), "\x1b[32m"));
-    }
-
-    if node.is_dir && cfg.show_count {
-        metas.push((
-            format!("[{}f, {}d]", node.file_count, node.dir_count),
-            "\x1b[90m",
-        ));
-    }
-
-    if !metas.is_empty() {
-        if raw {
-            let _ = write!(writer, " (");
-            for (i, (text, _)) in metas.iter().enumerate() {
-                if i > 0 {
-                    let _ = write!(writer, ", ");
-                }
-                let _ = write!(writer, "{}", text);
-            }
-            let _ = write!(writer, ")");
-        } else {
-            let _ = write!(writer, " \x1b[90m(");
-            for (i, (text, color)) in metas.iter().enumerate() {
-                if i > 0 {
-                    let _ = write!(writer, ", ");
-                }
-                let _ = write!(writer, "{}{}\x1b[0m", color, text);
-            }
-            let _ = write!(writer, "\x1b[90m)\x1b[0m");
-        }
-    }
+    let metas = collect_metas(node, cfg);
+    write_metadata(&metas, raw, writer);
 
     let _ = writeln!(writer);
-}
-
-fn format_label(root: &TreeNode, cfg: &Config) -> String {
-    if cfg.show_disk {
-        format!("{} ({})", root.name, format_size(root.total_size, DECIMAL))
-    } else {
-        root.name.clone()
-    }
 }

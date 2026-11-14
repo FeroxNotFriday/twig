@@ -8,7 +8,7 @@ Filter with math, not flags.
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?style=flat-square&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-lightgrey?style=flat-square)]()
-[![Speed](https://img.shields.io/badge/speed-1.9%C3%97_faster_than_tree.com-success?style=flat-square)]()
+[![Speed](https://img.shields.io/badge/speed-2.4%C3%97_faster_than_tree.com-success?style=flat-square)]()
 
 </div>
 
@@ -183,43 +183,43 @@ Flags exist for what is not a filter: display, traversal, output.
 
 `twig` walks the same filesystem as `tree` but does more per entry — 3-valued logic, path checks, extension dispatch, sorting. It wins anyway.
 
-Benchmarked on Windows 11, 12-core x86_64, NVMe SSD. 10 iterations after warm-up.
+Benchmarked on Windows 11, 12-core x86_64, NVMe SSD. 3 warm-up runs, 10 timed iterations, median reported.
 
 **Project directory (600 files, 313 MB `target/`)**
 
 ```text
-twig complex    ███                                               6.5 ms    (2.2x faster than bare)
-twig rs         ███████                                          11.8 ms
-twig            █████████                                        14.6 ms
-tree.com        ██████████████████                               28.3 ms
-cmd dir /s      █████████████████████████████████                52.0 ms
-Get-ChildItem   ████████████████████████████████████████         61.9 ms
+twig complex    ████                                               7.6 ms    (4.7× faster than tree.com)
+twig rs         ███████                                           13.1 ms
+twig            ████████                                          15.3 ms
+tree.com        ███████████████████                               36.0 ms
+cmd dir /s      ██████████████████████████████████                61.4 ms
+Get-ChildItem   █████████████████████████████████████████████     84.6 ms
 ```
 
 **System32 (~4800 files, hundreds of subdirs)**
 
 ```text
-twig rs         ███████                                          129 ms    (1.5x faster than tree.com)
-twig complex    ███████                                          132 ms
-twig            ██████████                                       186 ms
-tree.com        ███████████                                      192 ms
-cmd dir /s      █████████████████                                303 ms
-Get-ChildItem   ████████████████████████████████████████████████ 713 ms
+twig rs         ████████                                         136 ms    (1.6× faster than tree.com)
+twig complex    ████████                                         139 ms
+tree.com        ████████████                                     214 ms
+twig            █████████████                                    230 ms
+cmd dir /s      █████████████████                                305 ms
+Get-ChildItem   ████████████████████████████████████████████     746 ms
 ```
 
-Filtering makes `twig` faster, not slower. A query that prunes a subtree at the walker level costs nothing and saves everything — `%target` on the project never enters the 313 MB directory.
+Filtering makes `twig` faster, not slower. A query that prunes a subtree at the walker level costs nothing and saves everything — `%target` on the project never enters the 313 MB directory. On System32 the bare tree is no faster than `tree.com` (twig pays for the sort + path stripping that `tree` skips) — but `rs` and `complex` still beat it by 1.6×.
 
 **Metadata flags are priced honestly:**
 
 | Flag | Project | System32 | What it does |
 | :---: | ---: | ---: | :--- |
-| `-s` | +0% | -1% | per-file size |
-| `-z` | -6% | -0% | cumulative disk usage |
-| `-t` | -9% | +8% | relative mtime |
-| `-c` | -13% | +6% | `[Nf, Nd]` counters |
-| `-l` | +20% | +311% | reads every text file |
-| `-j` | +118% | +305% | JSON serialisation |
-| `-szltc` | +11% | +318% | all of the above |
+| `-s` | +3% | -7% | per-file size |
+| `-z` | +4% | -9% | cumulative disk usage |
+| `-t` | +5% | -9% | relative mtime |
+| `-c` | +16% | -9% | `[Nf, Nd]` counters |
+| `-l` | +29% | +262% | reads every text file |
+| `-j` | +238% | +366% | JSON serialisation |
+| `-szltc` | +29% | +278% | all of the above |
 
 `-l` reads every text file fully up to 4 MB — no truncation, no silent wrong numbers. Files larger than 4 MB, and known binaries (`.exe`, `.pdb`, `.rlib`, `.dll`, `.png`, etc.), get `line_count = None`. This is why `-l` is expensive on System32 (hundreds of `.xml` / `.config` / `.log` files) and cheap on a project.
 

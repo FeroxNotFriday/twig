@@ -1,10 +1,21 @@
-use crate::filter::Matcher;
+﻿use crate::filter::Matcher;
 use crate::model::*;
 use crate::tree::TreeNode;
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+
+fn effective_size(meta: &std::fs::Metadata) -> u64 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if meta.blocks() == 0 && meta.len() > 0 {
+            return 0;
+        }
+    }
+    meta.len()
+}
 
 pub fn crawl(cfg: &Config, matcher: &Arc<Matcher>) -> Option<TreeNode> {
     let root_path = &cfg.path;
@@ -30,9 +41,10 @@ pub fn crawl(cfg: &Config, matcher: &Arc<Matcher>) -> Option<TreeNode> {
     let mut root_node = if root_meta.is_dir() {
         TreeNode::new_dir(root_name, root_path.clone())
     } else {
-        let mut f = TreeNode::new_file(root_name, root_path.clone(), root_meta.len());
+        let size = effective_size(&root_meta);
+        let mut f = TreeNode::new_file(root_name, root_path.clone(), size);
         if cfg.show_loc {
-            f.line_count = crate::filter::count_file_lines(root_path, root_meta.len());
+            f.line_count = crate::filter::count_file_lines(root_path, size);
         }
         if cfg.show_dates {
             if let Ok(m) = root_meta.modified() {
@@ -77,7 +89,7 @@ pub fn crawl(cfg: &Config, matcher: &Arc<Matcher>) -> Option<TreeNode> {
                 Ok(r) => r,
                 Err(_) => return false,
             };
-            filter_matcher.matches(path, rel, meta.is_dir(), meta.len(), &meta, now)
+            filter_matcher.matches(path, rel, meta.is_dir(), effective_size(&meta), &meta, now)
         });
     }
 
@@ -107,7 +119,7 @@ pub fn crawl(cfg: &Config, matcher: &Arc<Matcher>) -> Option<TreeNode> {
         };
 
         let is_dir = meta.is_dir();
-        let size = meta.len();
+        let size = effective_size(&meta);
         let modified = if !is_dir && cfg.show_dates {
             meta.modified().ok()
         } else {
